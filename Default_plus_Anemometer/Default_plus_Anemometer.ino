@@ -29,7 +29,7 @@ Authors:
 #include <GPSLockLED.h>
 #include <BurstADCSampler.h>
 #include <HCSR04.h>
-#define ECHO 16
+#define ECHO 17
 
 /////////////////////////* Global Variables *////////////////////////
 
@@ -63,6 +63,7 @@ double waypoints [] = { 0, 10, 0, 0 };   // listed as x0,y0,x1,y1, ... etc.
 
 // ANEMOMETER CODE
 int hallSensor = 14; //connect hall effect sensor output to the corresponding pin (A0)
+int forceSensor = 15;
 int revolution = 0; //initialize revolution count
 double endTime = 0; //time of last rotation
 double timeDifference;
@@ -71,7 +72,7 @@ constexpr int N = 5; //number of samples to average across for cleanliness
 double sampleSet[N];
 int sampleIndex = 0;
 double RPS; //number of rotations per second
-const double anemometerConst = 20; // Anemometer constant (from wind tunnel) to change RPS to m/s
+const double anemometerConst = 10; // Anemometer constant (from wind tunnel) to change RPS to m/s
 double windSpeed;
 
 ////////////////////////* Setup *////////////////////////////////
@@ -110,7 +111,7 @@ void setup() {
   gps.lastExecutionTime             = loopStartTime - LOOP_PERIOD + GPS_LOOP_OFFSET;
   adc.lastExecutionTime             = loopStartTime - LOOP_PERIOD + ADC_LOOP_OFFSET;
   ef.lastExecutionTime              = loopStartTime - LOOP_PERIOD + ERROR_FLAG_LOOP_OFFSET;
-  button_sampler.lastExecutionTime  = loopStartTime - LOOP_PERIOD + BUTTON_LOOP_OFFSET;
+//  button_sampler.lastExecutionTime  = loopStartTime - LOOP_PERIOD + BUTTON_LOOP_OFFSET;
   state_estimator.lastExecutionTime = loopStartTime - LOOP_PERIOD + XY_STATE_ESTIMATOR_LOOP_OFFSET;
   surface_control.lastExecutionTime = loopStartTime - LOOP_PERIOD + SURFACE_CONTROL_LOOP_OFFSET;
   logger.lastExecutionTime          = loopStartTime - LOOP_PERIOD + LOGGER_LOOP_OFFSET;
@@ -128,7 +129,7 @@ void setup() {
 void loop() {
   currentTime=millis();
   
- if (echo_status <= 5000) {
+ if (forceSensor <= 500) {
     motor_driver.drive(100,100,0);
   }else {
     motor_driver.drive(-150,0,0);
@@ -176,10 +177,10 @@ void loop() {
   }
 
  // uses the ButtonSampler library to read a button -- use this as a template for new libraries!
-  if ( currentTime-button_sampler.lastExecutionTime > LOOP_PERIOD ) {
-    button_sampler.lastExecutionTime = currentTime;
-    button_sampler.updateState();
-  }
+  // if ( currentTime-button_sampler.lastExecutionTime > LOOP_PERIOD ) {
+  //   button_sampler.lastExecutionTime = currentTime;
+  //   button_sampler.updateState();
+  // }
 
   if ( currentTime-imu.lastExecutionTime > LOOP_PERIOD ) {
     imu.lastExecutionTime = currentTime;
@@ -204,11 +205,11 @@ void loop() {
     logger.log();
   }
 
-  // ANEMOMETER CODE
-  currentTime = millis();
-  float timeDifference = currentTime - endTime; // Basic Loop Setup
+  if ( currentTime-hallSensor.lastExecutionTime > LOOP_PERIOD) {
+    hallSensor.lastExecutionTime = currentTime;
+    float timeDifference = currentTime - endTime; // Basic Loop Setup
 
-  if (timeDifference > sampleTime) { 
+    if (timeDifference > sampleTime) { 
     // Code to get the RPS of the anemometer
     RPS = (revolution / sampleTime) * 1000;
 
@@ -222,16 +223,17 @@ void loop() {
 
   // Calculate running average
   double avgRPS = calculateAverage(sampleSet, N);
-  // windSpeed = avgRPS * anemometerConst;
+  windSpeed = avgRPS * anemometerConst;
 
   // Serial Monitor
   Serial.print("Average RPS (Hz): ");
   Serial.println(avgRPS);
-  // Serial.print("Wind Speed (m/s): ");
-  // Serial.println(windSpeed);
-
+  Serial.print("Wind Speed (m/s): ");
+  Serial.println(windSpeed);
   // Wait for 1 second before printing again
   delay(1000);
+  }
+
 }
 
 void EFA_Detected(void){
@@ -270,4 +272,3 @@ void ISR(){
 
     return sum / N;
 }
-
