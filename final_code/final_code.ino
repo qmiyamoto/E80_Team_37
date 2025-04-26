@@ -29,7 +29,9 @@ Authors:
 #include <GPSLockLED.h>
 #include <BurstADCSampler.h>
 #include <HCSR04.h>
+#include <AnemSampler.h>
 #define ECHO 17
+#define hallSensor 14
 
 /////////////////////////* Global Variables *////////////////////////
 
@@ -46,6 +48,7 @@ Logger logger;
 Printer printer;
 GPSLockLED led;
 BurstADCSampler burst_adc;
+AnemSampler anem_sampler;
 
 
 // loop start recorder
@@ -62,7 +65,7 @@ const int waypoint_dimensions = 2;       // waypoints are set to have two pieces
 double waypoints [] = { 0, 10, 0, 0 };   // listed as x0,y0,x1,y1, ... etc.
 
 // ANEMOMETER CODE
-int hallSensor = 14; //connect hall effect sensor output to the corresponding pin (A0)
+//int hallSensor = 14; //connect hall effect sensor output to the corresponding pin (A0)
 int forceSensor = 15;
 int revolution = 0; //initialize revolution count
 double endTime = 0; //time of last rotation
@@ -83,6 +86,7 @@ void setup() {
   logger.include(&gps);
   logger.include(&state_estimator);
   logger.include(&surface_control);
+  logger.include(&anem_sampler);
   logger.include(&motor_driver);
   logger.include(&adc);
   logger.include(&ef);
@@ -93,7 +97,7 @@ void setup() {
 
   printer.init();
   ef.init();
-  button_sampler.init();
+  //button_sampler.init();
   imu.init();
   UartSerial.begin(9600);
   gps.init(&GPS);
@@ -116,10 +120,10 @@ void setup() {
   surface_control.lastExecutionTime = loopStartTime - LOOP_PERIOD + SURFACE_CONTROL_LOOP_OFFSET;
   logger.lastExecutionTime          = loopStartTime - LOOP_PERIOD + LOGGER_LOOP_OFFSET;
   burst_adc.lastExecutionTime       = loopStartTime;
+  anem_sampler.lastExecutionTime    = loopStartTime;
 
   // ANEMOMETER CODE
-  Serial.begin(9600);
-  pinMode(hallSensor, INPUT_PULLUP);
+  //pinMode(hallSensor, INPUT_PULLUP);
   //when hallSensor pin goes from HIGH to LOW, call the ISR function
   attachInterrupt(digitalPinToInterrupt(hallSensor), ISR, FALLING);
 }
@@ -128,7 +132,6 @@ void setup() {
 
 void loop() {
   currentTime=millis();
-  
  if (forceSensor <= 500) {
     motor_driver.drive(100,100,0);
   }else {
@@ -138,7 +141,7 @@ void loop() {
   if ( currentTime-printer.lastExecutionTime > LOOP_PERIOD ) {
     printer.lastExecutionTime = currentTime;
     printer.printValue(0,adc.printSample());
-    printer.printValue(1,ef.printStates());
+    printer.printValue(1,anem_sampler.printState());
     printer.printValue(2,logger.printState());
     printer.printValue(3,gps.printState());   
     printer.printValue(4,state_estimator.printState());     
@@ -205,33 +208,28 @@ void loop() {
     logger.log();
   }
 
-  if ( currentTime-hallSensor.lastExecutionTime > LOOP_PERIOD) {
-    hallSensor.lastExecutionTime = currentTime;
-    float timeDifference = currentTime - endTime; // Basic Loop Setup
+  if ( currentTime-anem_sampler.lastExecutionTime > LOOP_PERIOD) {
+    anem_sampler.lastExecutionTime = currentTime;
+    float timeDifference = currentTime - endTime; 
 
     if (timeDifference > sampleTime) { 
-    // Code to get the RPS of the anemometer
+    // RPS/
     RPS = (revolution / sampleTime) * 1000;
-
-    // Store the RPS value in the history array (for running average)
-    sampleSet[sampleIndex] = RPS;
-    sampleIndex = (sampleIndex + 1) % N; // Loop back to the start when the array is full
+    anem_sampler.updateState(RPS);
 
     endTime = currentTime;
-    revolution = 0; // Reset revolution count for next sample set
+    revolution = 0; 
   }
 
-  // Calculate running average
-  double avgRPS = calculateAverage(sampleSet, N);
-  windSpeed = avgRPS * anemometerConst;
+  //windSpeed = avgRPS * anemometerConst;
 
   // Serial Monitor
-  Serial.print("Average RPS (Hz): ");
-  Serial.println(avgRPS);
-  Serial.print("Wind Speed (m/s): ");
-  Serial.println(windSpeed);
-  // Wait for 1 second before printing again
-  delay(1000);
+  // Serial.print("Average RPS (Hz): ");
+  // Serial.println(avgRPS);
+  // Serial.print("Wind Speed (m/s): ");
+  // Serial.println(windSpeed);
+  // // Wait for 1 second before printing again
+  // delay(1000);
   }
 
 }
@@ -249,20 +247,10 @@ void EFC_Detected(void){
 }
   
 // ANEMOMETER CODE
-//ISR function: increments revolution count and prints to serial monitor
 void ISR(){ 
   revolution += 1;
-  Serial.print("Revolution count: ");
-  Serial.println(revolution);
 }
 
-/*
- * Calculates a running average of a sample set
- *
- * @param sampleSet The sample set
- * @param N The number of samples
- * @return The running average
- */
  double calculateAverage(double sampleSet[], int N) {
     double sum = 0.0;
 
