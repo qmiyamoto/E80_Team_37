@@ -1,1 +1,1 @@
-files for this fuckass class
+files for E80
